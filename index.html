@@ -150,7 +150,8 @@ ort.env.wasm.numThreads = self.crossOriginIsolated
   ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 
 const $ = (id) => document.getElementById(id);
-const TILE = 384, OVERLAP = 32, MAX_OUT_PX = 40e6;
+const TILE = 512, OVERLAP = 32, MAX_OUT_PX = 40e6;
+const EP = new URLSearchParams(location.search).get("ep");
 const FILES = [];
 let sessions = {}, scale = 1, cur = -1, busy = false;
 
@@ -163,7 +164,7 @@ const setBar = (p) => {
 async function getSession(s) {
   if (sessions[s]) return sessions[s];
   const url = s === 2 ? "./restore2x.onnx" : "./restore1x.onnx";
-  const tries = ["webgpu", "wasm"];
+  const tries = EP ? [EP] : ["webgpu", "wasm"];
   let lastErr;
   for (const ep of tries) {
     try {
