@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>微信传图复原</title>
+<style>
+  :root{
+    --bg:#0d0f13; --panel:#151920; --panel2:#1b202a; --line:#282f3d;
+    --fg:#e9edf4; --dim:#8b95a7; --accent:#4f8cff; --ok:#38c172; --warn:#f6a623; --bad:#e5534b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:34px 20px 70px}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:.5px}
+  .sub{color:var(--dim);font-size:14px}
+  .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
+    background:#1e2532;color:var(--dim);margin-left:8px;vertical-align:middle}
+  .badge.ok{color:var(--ok);background:#12301f}
+  .badge.warn{color:var(--warn);background:#33260f}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:18px}
+  .card h2{font-size:15px;margin:0 0 14px;color:var(--dim);font-weight:600;letter-spacing:.3px}
+  #drop{border:2px dashed var(--line);border-radius:12px;padding:40px 20px;text-align:center;
+    cursor:pointer;transition:.2s;color:var(--dim)}
+  #drop:hover,#drop.on{border-color:var(--accent);color:var(--fg);background:#1a2130}
+  #drop b{color:var(--fg)}
+  .small{font-size:13px;color:var(--dim)}
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.modes{grid-template-columns:1fr}}
+  .mode{border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;background:var(--panel2);transition:.15s}
+  .mode:hover{border-color:#3a4759}
+  .mode.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .mode b{display:block;font-size:15px;margin-bottom:2px}
+  .mode span{font-size:12.5px;color:var(--dim)}
+  .opts{display:flex;gap:22px;flex-wrap:wrap;margin-top:16px;font-size:13.5px;color:var(--dim)}
+  .opts label{display:flex;align-items:center;gap:7px;cursor:pointer}
+  select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:5px 8px;font-size:13px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:11px 22px;
+    font-size:14.5px;cursor:pointer;font-weight:600}
+  button:disabled{background:#2b3344;color:#6a7387;cursor:not-allowed}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+  #bar{height:6px;background:#222835;border-radius:99px;overflow:hidden;margin-top:16px;display:none}
+  #bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4f8cff,#38c172);transition:width .2s}
+  #status{font-size:13px;color:var(--dim);margin-top:10px;min-height:20px}
+  #list{display:none;margin-top:16px}
+  .item{display:flex;align-items:center;gap:12px;padding:9px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:8px;background:var(--panel2);cursor:pointer}
+  .item.on{border-color:var(--accent)}
+  .item .nm{flex:1;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .st{font-size:12px;color:var(--dim);white-space:nowrap}
+  .item .st.ok{color:var(--ok)} .item .st.err{color:var(--bad)} .item .st.run{color:var(--accent)}
+  .view{display:none;margin-top:18px}
+  .compare{position:relative;width:100%;border-radius:12px;overflow:hidden;background:#000;
+    touch-action:none;user-select:none}
+  .compare canvas{display:block;width:100%;height:auto}
+  .compare .after{position:absolute;inset:0;clip-path:inset(0 0 0 50%)}
+  .handle{position:absolute;top:0;bottom:0;width:2px;background:#fff;left:50%;
+    box-shadow:0 0 12px rgba(0,0,0,.75);pointer-events:none}
+  .handle::after{content:"";position:absolute;top:50%;left:50%;width:34px;height:34px;margin:-17px 0 0 -17px;
+    border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.5)}
+  .tags{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:8px}
+  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;font-size:13px;color:var(--dim)}
+  @media(max-width:640px){.meta{grid-template-columns:1fr}}
+  .meta b{color:var(--fg);font-weight:600}
+  footer{margin-top:26px;font-size:12px;color:#5b6373;line-height:1.9}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>微信传图复原<span class="badge" id="dev">初始化中…</span></h1>
+  <div class="sub">
+    修复微信传输造成的压缩块、振铃与模糊。全部计算在<strong>你的浏览器本地</strong>完成，图片不会上传到任何服务器。
+  </div>
+
+  <div class="card">
+    <h2>1 · 选择图片</h2>
+    <div id="drop">
+      <div style="font-size:15px;margin-bottom:6px"><b>点击选择</b> 或把图片拖到这里</div>
+      <div class="small">支持 JPG / PNG，可一次选多张；单张建议长边不超过 3000</div>
+      <div class="small" style="margin-top:10px">没有图？<a href="#" id="demo">用示例试一下</a></div>
+      <input id="file" type="file" accept="image/*" multiple hidden />
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · 修复方式</h2>
+    <div class="modes">
+      <div class="mode on" data-scale="1">
+        <b>原尺寸修复</b>
+        <span>保持微信给的尺寸，只去压缩痕迹。适合发回微信、手机查看。</span>
+      </div>
+      <div class="mode" data-scale="2">
+        <b>修复 + 2 倍放大</b>
+        <span>去痕迹并把短边放大一倍。适合打印、大屏、二次编辑。</span>
+      </div>
+    </div>
+    <div class="opts">
+      <label>输出格式
+        <select id="fmt">
+          <option value="jpg">JPG（质量 95，体积小）</option>
+          <option value="png">PNG（无损，体积大）</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="keepmeta" checked /> 保留原图 EXIF / 色彩配置</label>
+      <label><input type="checkbox" id="suffix" checked /> 文件名加后缀，不覆盖原图</label>
+    </div>
+    <div class="row">
+      <button id="run" disabled>开始修复</button>
+      <button id="dlall" class="ghost" disabled>打包下载全部</button>
+      <span class="small" id="sizehint"></span>
+    </div>
+    <div id="bar"><i></i></div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card view" id="view">
+    <h2>3 · 前后对比</h2>
+    <div class="compare" id="cmp">
+      <canvas id="cvBefore"></canvas>
+      <canvas id="cvAfter" class="after"></canvas>
+      <div class="handle" id="hd"></div>
+    </div>
+    <div class="tags"><span>← 拖动分割线对比 →</span><span id="sz"></span></div>
+    <div class="meta">
+      <div>耗时：<b id="t1">-</b></div>
+      <div>分块：<b id="t2">-</b></div>
+      <div>输出：<b id="t3">-</b></div>
+    </div>
+    <div class="row"><button id="dl" class="ghost" disabled>下载这张</button></div>
+  </div>
+
+  <footer>
+    模型：SRVGGNetCompact（1.15M 参数）· ONNX Runtime Web · 纯前端推理<br />
+    说明：传输压缩丢掉的信息无法真正还原，模型只做去伪影与合理重建，不承诺恢复原始细节。<br />
+    <span id="thread"></span>
+  </footer>
+</div>
+
+<script src="./coi-serviceworker.min.js"></script>
+<script src="./ort/ort.min.js"></script>
+<script>
+/* ============ 运行时 ============ */
+ort.env.wasm.simd = true;
+ort.env.wasm.numThreads = self.crossOriginIsolated
+  ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+
+const $ = (id) => document.getElementById(id);
+const TILE = 384, OVERLAP = 32, MAX_OUT_PX = 40e6;
+const FILES = [];
+let sessions = {}, scale = 1, cur = -1, busy = false;
+
+const setStatus = (t) => { $("status").textContent = t; };
+const setBar = (p) => {
+  $("bar").style.display = p == null ? "none" : "block";
+  if (p != null) $("bar").firstElementChild.style.width = `${Math.round(p * 100)}%`;
+};
+
+async function getSession(s) {
+  if (sessions[s]) return sessions[s];
+  const url = s === 2 ? "./restore2x.onnx" : "./restore1x.onnx";
+  const tries = ["webgpu", "wasm"];
+  let lastErr;
+  for (const ep of tries) {
+    try {
+      const sess = await ort.InferenceSession.create(url, {
+        executionProviders: [ep], graphOptimizationLevel: "all",
+      });
+      sessions[s] = sess;
+      $("dev").textContent = `${s === 2 ? "2×" : "原尺寸"} · ${ep.toUpperCase()}` +
+        (ep === "wasm" && self.crossOriginIsolated ? " 多线程" : "");
+      $("dev").className = "badge ok";
+      return sess;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+/* ============ 图片读入 ============ */
+function addFiles(fileList) {
+  const imgs = [...fileList].filter((f) => f.type.startsWith("image/"));
+  if (!imgs.length) return;
+  for (const f of imgs) {
+    if (FILES.some((x) => x.file === f)) continue;
+    FILES.push({ file: f, name: f.name, status: "wait", out: null, ms: 0, blocks: 0 });
+  }
+  renderList();
+  $("list").style.display = FILES.length ? "block" : "none";
+  $("run").disabled = busy || !FILES.some((f) => f.status !== "done");
+  setStatus(`已载入 ${FILES.length} 张，选择修复方式后开始。`);
+}
+
+function renderList() {
+  const box = $("list");
+  box.innerHTML = "";
+  FILES.forEach((f, i) => {
+    const el = document.createElement("div");
+    el.className = "item" + (i === cur ? " on" : "");
+    const cls = f.status === "done" ? "ok" : f.status === "error" ? "err"
+      : f.status === "run" ? "run" : "";
+    const txt = f.status === "done" ? "已完成" : f.status === "error" ? "失败"
+      : f.status === "run" ? "处理中" : "待处理";
+    el.innerHTML = `<div class="nm">${f.name}</div><div class="st ${cls}">${txt}</div>`;
+    el.onclick = () => { cur = i; renderList(); showResult(i); };
+    box.appendChild(el);
+  });
+  $("dlall").disabled = busy || !FILES.some((f) => f.status === "done");
+}
+
+/* ============ 推理 ============ */
+function toCHW(cv, x, y, w, h) {
+  const d = cv.getContext("2d", { willReadFrequently: true }).getImageData(x, y, w, h).data;
+  const n = w * h, out = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) {
+    out[i] = d[i * 4] / 255;
+    out[n + i] = d[i * 4 + 1] / 255;
+    out[2 * n + i] = d[i * 4 + 2] / 255;
+  }
+  return out;
+}
+
+function feather(n, ov) {
+  const w = new Float32Array(n).fill(1);
+  for (let i = 0; i < ov; i++) {
+    const v = 0.01 + 0.99 * (i / ov);
+    if (v < w[i]) w[i] = v;
+    const j = n - 1 - i;
+    if (v < w[j]) w[j] = v;
+  }
+  return w;
+}
+
+function starts(total, tile, ov) {
+  if (total <= tile) return [0];
+  const step = tile - ov, pos = [];
+  for (let p = 0; p <= total - tile; p += step) pos.push(p);
+  if (pos[pos.length - 1] !== total - tile) pos.push(total - tile);
+  return pos;
+}
+
+async function restore(cv, s, onProg) {
+  const sess = await getSession(s);
+  const W = cv.width, H = cv.height, OW = W * s, OH = H * s;
+  const ys = starts(H, TILE, OVERLAP), xs = starts(W, TILE, OVERLAP);
+  const total = ys.length * xs.length;
+  const acc = new Float32Array(3 * OW * OH);
+  const wsum = new Float32Array(OW * OH);
+  const t0 = performance.now();
+  let done = 0;
+
+  for (const y of ys) {
+    for (const x of xs) {
+      const tw = Math.min(TILE, W - x), th = Math.min(TILE, H - y);
+      const t = new ort.Tensor("float32", toCHW(cv, x, y, tw, th), [1, 3, th, tw]);
+      const r = await sess.run({ input: t });
+      const out = r.output.data;
+      const ow = tw * s, oh = th * s;
+      const fy = feather(oh, OVERLAP * s), fx = feather(ow, OVERLAP * s);
+      const n = ow * oh, CH = OW * OH;
+      for (let j = 0; j < oh; j++) {
+        const gy = y * s + j;
+        for (let i = 0; i < ow; i++) {
+          const wt = fy[j] * fx[i];
+          const gi = gy * OW + x * s + i;
+          const pi = j * ow + i;
+          acc[gi] += out[pi] * wt;
+          acc[CH + gi] += out[n + pi] * wt;
+          acc[2 * CH + gi] += out[2 * n + pi] * wt;
+          wsum[gi] += wt;
+        }
+      }
+      done++;
+      onProg(done / total);
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  const outCv = document.createElement("canvas");
+  outCv.width = OW; outCv.height = OH;
+  const ctx = outCv.getContext("2d");
+  const img = ctx.createImageData(OW, OH);
+  const px = img.data, CH = OW * OH;
+  for (let i = 0; i < OW * OH; i++) {
+    const k = 1 / (wsum[i] || 1);
+    px[i * 4] = Math.max(0, Math.min(255, acc[i] * k * 255));
+    px[i * 4 + 1] = Math.max(0, Math.min(255, acc[CH + i] * k * 255));
+    px[i * 4 + 2] = Math.max(0, Math.min(255, acc[2 * CH + i] * k * 255));
+    px[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return { canvas: outCv, ms: performance.now() - t0, blocks: total };
+}
+
+/* ============ 输出与元数据 ============ */
+async function blobOf(canvas, fmt) {
+  return new Promise((res) =>
+    canvas.toBlob((b) => res(b), fmt === "png" ? "image/png" : "image/jpeg",
+      fmt === "png" ? undefined : 0.95));
+}
+
+function extractApp(buf) {
+  const out = [];
+  let p = 2;
+  while (p + 4 < buf.length) {
+    if (buf[p] !== 0xff) { p++; continue; }
+    const m = buf[p + 1];
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { p += 2; continue; }
+    if (m === 0xda) break;
+    const len = (buf[p + 2] << 8) | buf[p + 3];
+    if (m === 0xe1 || m === 0xe2) out.push(buf.slice(p, p + 2 + len));
+    p += 2 + len;
+  }
+  return out;
+}
+
+function fixOrientation(seg) {
+  // seg: FF E1 len ... "Exif\0\0" TIFF
+  try {
+    const dv = new DataView(seg.buffer, seg.byteOffset, seg.byteLength);
+    const t = 4 + 6;
+    const le = seg[t] === 0x49;
+    const u16 = (o) => dv.getUint16(o, le);
+    const u32 = (o) => dv.getUint32(o, le);
+    const ifd = t + u32(t + 4);
+    const n = u16(ifd);
+    for (let i = 0; i < n; i++) {
+      const e = ifd + 2 + i * 12;
+      if (e + 12 > seg.length) break;
+      if (u16(e) === 0x0112) { dv.setUint16(e + 8, 1, le); return; }
+    }
+  } catch (_) {}
+}
+
+async function attachMeta(blob, srcBuf) {
+  const segs = extractApp(srcBuf);
+  if (!segs.length) return blob;
+  segs.forEach((s) => { if (s[1] === 0xe1) fixOrientation(s); });
+  const data = new Uint8Array(await blob.arrayBuffer());
+  let pos = 2;
+  if (data[2] === 0xff && data[3] === 0xe0) pos = 2 + 2 + ((data[4] << 8) | data[5]);
+  const head = data.slice(0, pos), tail = data.slice(pos);
+  return new Blob([head, ...segs, tail], { type: "image/jpeg" });
+}
+
+function outName(name, s, keep) {
+  if (!keep) return name;
+  const i = name.lastIndexOf(".");
+  const base = i < 0 ? name : name.slice(0, i);
+  const ext = i < 0 ? "" : name.slice(i);
+  return `${base}${s === 2 ? "_x2" : "_restored"}${ext}`;
+}
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ============ 最小 ZIP（仅存储，无压缩） ============ */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(u8) {
+  let c = 0xffffffff;
+  for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function makeZip(items) {
+  const enc = new TextEncoder();
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const it of items) {
+    const name = enc.encode(it.name), data = it.data, crc = crc32(data);
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0800, true); dv.setUint16(8, 0, true);
+    dv.setUint16(10, 0, true); dv.setUint16(12, 0, true);
+    dv.setUint32(14, crc, true); dv.setUint32(18, data.length, true);
+    dv.setUint32(22, data.length, true); dv.setUint16(26, name.length, true);
+    lh.set(name, 30);
+    locals.push(lh, data);
+    const ch = new Uint8Array(46 + name.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true); cv.setUint16(10, 0, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true);
+    cv.setUint32(24, data.length, true); cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    centrals.push(ch);
+    offset += lh.length + data.length;
+  }
+  const cdSize = centrals.reduce((a, b) => a + b.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, items.length, true); ev.setUint16(10, items.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+  return new Blob([...locals, ...centrals, eocd], { type: "application/zip" });
+}
+
+/* ============ 流程 ============ */
+async function loadCanvas(file) {
+  let bmp;
+  try {
+    bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch (_) {
+    bmp = await createImageBitmap(file);
+  }
+  const cv = document.createElement("canvas");
+  cv.width = bmp.width; cv.height = bmp.height;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close && bmp.close();
+  return cv;
+}
+
+async function processOne(f, i) {
+  const s = scale;
+  f.status = "run"; renderList();
+  const cv = await loadCanvas(f.file);
+  if (cv.width * s * cv.height * s > MAX_OUT_PX) {
+    throw new Error("输出像素过大，请先缩小图片或改用原尺寸修复");
+  }
+  const r = await restore(cv, s, (p) => {
+    setBar(((i + p) / FILES.length));
+    setStatus(`${f.name}：${Math.round(p * 100)}%`);
+  });
+  const fmt = $("fmt").value;
+  let blob = await blobOf(r.canvas, fmt);
+  if (fmt === "jpg" && $("keepmeta").checked) {
+    try { blob = await attachMeta(blob, await f.file.arrayBuffer()); } catch (_) {}
+  }
+  f.out = { blob, canvas: r.canvas, name: outName(f.name, s, $("suffix").checked) };
+  f.ms = r.ms; f.blocks = r.blocks; f.status = "done";
+  f.before = cv;
+  renderList();
+}
+
+$("run").onclick = async () => {
+  if (busy) return;
+  busy = true; $("run").disabled = true; $("dlall").disabled = true;
+  setBar(0);
+  const todo = FILES.map((f, i) => ({ f, i })).filter(({ f }) => f.status !== "done");
+  try {
+    for (let k = 0; k < todo.length; k++) {
+      const { f, i } = todo[k];
+      try {
+        await processOne(f, k);
+      } catch (e) {
+        f.status = "error"; f.err = e.message; renderList();
+        setStatus(`${f.name} 失败：${e.message}`);
+      }
+    }
+    const ok = FILES.filter((f) => f.status === "done");
+    setStatus(ok.length ? `完成 ${ok.length} 张。点击列表查看对比，或打包下载全部。`
+      : "没有成功的图片，看看上面的错误提示。");
+    if (ok.length) { cur = FILES.indexOf(ok[0]); renderList(); showResult(cur); }
+  } finally {
+    setBar(null); busy = false; $("run").disabled = false;
+    $("dlall").disabled = !FILES.some((f) => f.status === "done");
+  }
+};
+
+function showResult(i) {
+  const f = FILES[i];
+  if (!f || !f.out) { $("view").style.display = "none"; return; }
+  $("view").style.display = "block";
+  const b = f.before, a = f.out.canvas;
+  const cb = $("cvBefore"), ca = $("cvAfter");
+  const W = Math.max(b.width, a.width), H = Math.max(b.height, a.height);
+  cb.width = W; cb.height = H; ca.width = W; ca.height = H;
+  const c1 = cb.getContext("2d"), c2 = ca.getContext("2d");
+  c1.fillStyle = "#000"; c1.fillRect(0, 0, W, H);
+  c2.fillStyle = "#000"; c2.fillRect(0, 0, W, H);
+  c1.drawImage(b, 0, 0, W, H);
+  c2.drawImage(a, 0, 0, a.width, a.height);
+  $("t1").textContent = `${(f.ms / 1000).toFixed(1)} s`;
+  $("t2").textContent = `${f.blocks} 块 · ${TILE}px`;
+  $("t3").textContent = `${a.width} × ${a.height}`;
+  $("sz").textContent = `${b.width} × ${b.height} → ${a.width} × ${a.height}`;
+  $("dl").disabled = false;
+}
+
+$("dl").onclick = () => {
+  const f = FILES[cur];
+  if (f && f.out) download(f.out.blob, f.out.name);
+};
+
+$("dlall").onclick = async () => {
+  const ok = FILES.filter((f) => f.status === "done");
+  if (!ok.length) return;
+  if (ok.length === 1) return download(ok[0].out.blob, ok[0].out.name);
+  const items = await Promise.all(ok.map(async (f) => ({
+    name: f.out.name, data: new Uint8Array(await f.out.blob.arrayBuffer()),
+  })));
+  download(makeZip(items), `wechat-restore-${ok.length}.zip`);
+};
+
+/* 模式切换 */
+document.querySelectorAll(".mode").forEach((el) => {
+  el.onclick = () => {
+    if (busy) return;
+    document.querySelectorAll(".mode").forEach((x) => x.classList.remove("on"));
+    el.classList.add("on");
+    scale = +el.dataset.scale;
+    FILES.forEach((f) => { f.out = null; f.status = "wait"; });
+    $("view").style.display = "none";
+    renderList();
+    $("run").disabled = !FILES.length;
+    $("sizehint").textContent = scale === 2 ? "输出 = 原尺寸 ×2" : "输出 = 原尺寸";
+  };
+});
+
+/* 拖拽与选择 */
+$("drop").onclick = () => $("file").click();
+$("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+["dragenter", "dragover"].forEach((ev) =>
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("on"); }));
+["dragleave", "drop"].forEach((ev) =>
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("on"); }));
+$("drop").addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+$("demo").onclick = async (e) => {
+  e.preventDefault();
+  try {
+    const b = await (await fetch("./demo.jpg")).blob();
+    addFiles([new File([b], "demo.jpg", { type: "image/jpeg" })]);
+  } catch (_) { setStatus("示例图加载失败。"); }
+};
+
+/* 对比滑块 */
+const cmp = $("cmp"), hd = $("hd"), after = $("cvAfter");
+let drag = false;
+const moveTo = (clientX) => {
+  const r = cmp.getBoundingClientRect();
+  const p = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  after.style.clipPath = `inset(0 0 0 ${p * 100}%)`;
+  hd.style.left = `${p * 100}%`;
+};
+cmp.addEventListener("pointerdown", (e) => { drag = true; moveTo(e.clientX); });
+window.addEventListener("pointermove", (e) => drag && moveTo(e.clientX));
+window.addEventListener("pointerup", () => (drag = false));
+
+/* 初始化 */
+$("thread").textContent = self.crossOriginIsolated
+  ? "推理线程：多线程" : "推理线程：单线程（多线程需 COOP/COEP 响应头）";
+(async () => {
+  try {
+    await getSession(1);
+    setStatus("模型已就绪，选择图片开始。");
+  } catch (e) {
+    $("dev").textContent = "加载失败";
+    $("dev").className = "badge warn";
+    setStatus("模型加载失败：" + e.message + "（请用 http 打开，不要直接双击 html）");
+  }
+})();
+</script>
+</body>
+</html>
